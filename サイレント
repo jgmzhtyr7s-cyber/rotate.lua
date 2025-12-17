@@ -1,0 +1,117 @@
+-- クライアント側 LocalScript（Delta対応サイレントエイム）
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local ShootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
+
+-- 設定値（自作ゲームに合わせて調整してください）
+local BULLET_SPEED = 500          -- 弾速（studs per second）
+local MAX_AIM_DISTANCE = 500      -- 最大狙撃距離
+local FOV_RADIUS = 200            -- マウスからの最大距離（ピクセル）
+local PREDICTION_ENABLED = true   -- 予測補正オン/オフ
+
+-- 各プレイヤーの過去位置を保持（速度計算用）
+local LastPositions = {}
+local LastTimes = {}
+
+local function GetClosestEnemyWithPrediction()
+    local closestPlayer = nil
+    local closestDistance = math.huge
+    local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local character = player.Character
+            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+            local head = character:FindFirstChild("Head")
+
+            if humanoidRootPart then
+                local targetPart = head or humanoidRootPart  -- Head優先
+                local rootPos = humanoidRootPart.Position
+
+                -- 画面上の位置を取得
+                local screenPos, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
+                if onScreen then
+                    local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if dist2D < FOV_RADIUS and dist2D < closestDistance then
+                        -- 3D距離チェック
+                        local distance3D = (rootPos - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+                        if distance3D <= MAX_AIM_DISTANCE then
+                            closestDistance = dist2D
+                            closestPlayer = {
+                                Player = player,
+                                Part = targetPart,
+                                Distance = distance3D
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+-- 予測位置を計算する関数
+local function PredictPosition(targetPart, distance)
+    local currentPos = targetPart.Position
+    local currentTime = tick()
+
+    local player = Players:GetPlayerFromCharacter(targetPart.Parent)
+    if not player then return currentPos end
+
+    local lastPos = LastPositions[player] or currentPos
+    local lastTime = LastTimes[player] or currentTime
+
+    local deltaTime = currentTime - lastTime
+    local velocity = Vector3.new(0, 0, 0)
+
+    if deltaTime > 0 then
+        velocity = (currentPos - lastPos) / deltaTime
+    end
+
+    -- 記録更新
+    LastPositions[player] = currentPos
+    LastTimes[player] = currentTime
+
+    if not PREDICTION_ENABLED then
+        return currentPos
+    end
+
+    -- 弾が飛ぶのにかかる時間 = 距離 / 弾速
+    local timeToHit = distance / BULLET_SPEED
+
+    -- 予測位置 = 現在位置 + 速度 × 飛行時間
+    local predictedPos = currentPos + velocity * timeToHit
+
+    return predictedPos
+end
+
+-- 射撃処理
+Mouse.Button1Down:Connect(function()
+    local targetData = GetClosestEnemyWithPrediction()
+
+    if targetData then
+        local predictedPos = PredictPosition(targetData.Part, targetData.Distance)
+
+        -- サイレントエイム：サーバーに予測位置を直接送信
+        ShootEvent:FireServer(predictedPos, targetData.Part.Name)  -- 位置 + パーツ名（オプション）
+    else
+        -- ターゲットなし：通常のマウス方向を送信
+        local ray = Camera:ScreenPointToRay(Mouse.X, Mouse.Y)
+        local direction = ray.Direction * 1000
+        ShootEvent:FireServer(direction, nil)
+    end
+end)
+
+-- クリーンアップ（プレイヤー退出時）
+Players.PlayerRemoving:Connect(function(player)
+    LastPositions[player] = nil
+    LastTimes[player] = nil
+end)
