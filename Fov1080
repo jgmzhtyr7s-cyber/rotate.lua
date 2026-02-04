@@ -1,0 +1,133 @@
+local PlaceId = 17625359962
+if game.PlaceId ~= PlaceId then
+    game.StarterGui:SetCore("SendNotification", {Title="エラー"; Text="Rivals Ninja専用！"; Duration=3})
+    return
+end
+
+local player = game.Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+-- ★ACバイパス: Anti-Kick Metamethod Hook (Sky-Hub式)★
+local mt = getrawmetatable(game)
+local old = mt.__namecall
+setreadonly(mt, false)
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if method == "Kick" or method == "FireServer" and tostring(self) == "AntiCheat" then
+        return wait(9e9)
+    end
+    return old(self, ...)
+end)
+setreadonly(mt, true)
+
+-- Ninja超待機
+repeat wait() until game:IsLoaded() and camera
+wait(4)
+
+-- GUI (1080x1080固定)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "RivalsNinjaFOVFix"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local function makeDraggable(gui) -- 省略(前と同じ)
+    local dragging, dragInput, dragStart, startPos
+    local function update(input)
+        local delta = input.Position - dragStart
+        gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    gui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = input.Position; startPos = gui.Position
+            input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+        end
+    end)
+    gui.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then update(input) end
+    end)
+end
+
+-- トグル
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 100, 0, 60)
+toggleBtn.Position = UDim2.new(1, -120, 0, 40)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+toggleBtn.TextColor3 = Color3.new(1,1,1)
+toggleBtn.Text = "RIVALS\nFOV FIX"
+toggleBtn.TextScaled = true
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.Parent = screenGui
+makeDraggable(toggleBtn)
+
+-- フレーム
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 420, 0, 160)
+frame.Position = UDim2.new(0.5, -210, 0.82, -80)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+frame.BorderSizePixel = 0
+frame.Visible = false
+frame.Parent = screenGui
+makeDraggable(frame)
+
+local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 15); corner.Parent = frame
+
+local label = Instance.new("TextLabel")
+label.Size = UDim2.new(1, 0, 0, 50)
+label.Position = UDim2.new(0, 0, 0, 10)
+label.BackgroundTransparency = 1
+label.TextColor3 = Color3.new(1,1,1)
+label.TextScaled = true
+label.Font = Enum.Font.GothamBold
+label.Text = "Distort: 1.00 (FOV: 120)"
+label.Parent = frame
+
+local bar = Instance.new("Frame")
+bar.Size = UDim2.new(0.9, 0, 0, 25)
+bar.Position = UDim2.new(0.05, 0, 0.55, 0)
+bar.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+bar.BorderSizePixel = 0
+bar.Parent = frame
+
+local barCorner = Instance.new("UICorner"); barCorner.CornerRadius = UDim.new(0, 8); barCorner.Parent = bar
+
+local knob = Instance.new("TextButton")
+knob.Size = UDim2.new(0, 45, 0, 45)
+knob.Position = UDim2.new(1, -45, -0.6, 0)
+knob.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+knob.Text = ""; knob.AutoButtonColor = false
+knob.Parent = bar
+
+local knobCorner = Instance.new("UICorner"); knobCorner.CornerRadius = UDim.new(0, 10); knobCorner.Parent = knob
+
+-- 変数
+local currentDistort = 1.0
+local draggingSlider = false
+local enabled = false
+local loops = {}
+
+-- トグル
+toggleBtn.MouseButton1Click:Connect(function()
+    frame.Visible = not frame.Visible
+    enabled = not enabled
+    toggleBtn.BackgroundColor3 = enabled and Color3.fromRGB(50, 255, 50) or Color3.fromRGB(255, 50, 50)
+    if enabled then startUltraLoops() else stopLoops() end
+end)
+
+-- スライダー (前と同じ)
+knob.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingSlider = true end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingSlider = false end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if draggingSlider and enabled and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local mouseX = input.Position.X
+        local barAbsPos, barAbsSize = bar.AbsolutePosition.X, bar.AbsoluteSize.X
+        local relX = math.clamp(mouseX - barAbsPos, 0, barAbsSize)
+ 
